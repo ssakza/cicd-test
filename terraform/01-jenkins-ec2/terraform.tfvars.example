@@ -1,0 +1,10 @@
+# ==================================================
+# 이 파일을 terraform.tfvars로 복사한 후 본인 환경에 맞게 수정하세요
+# cp terraform.tfvars.example terraform.tfvars
+# ==================================================
+
+aws_region     = "ap-northeast-2"    # AWS 리전 (서울)
+aws_profile    = "hong"              # 본인의 AWS CLI 프로필명
+instance_type  = "t3.small"          # 인스턴스 타입
+key_name       = "my-jenkins-key"    # 본인의 EC2 Key Pair 이름
+use_elastic_ip = false               # Elastic IP 사용 여부
