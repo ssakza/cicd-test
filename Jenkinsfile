@@ -4,7 +4,6 @@ pipeline {
     environment {
         APP_NAME = 'cicd-test'
         VERSION = '1.0.0'
-        DEPLOY_ENV = 'dev'  // 배포 환경: dev, staging, prod
     }
     
     stages {
@@ -20,6 +19,15 @@ pipeline {
                 echo "🔨 ${APP_NAME} v${VERSION} 빌드 중..."
                 sh 'ls -la'
             }
+            // Stage별 post 액션
+            post {
+                success {
+                    echo "✅ Build 단계 성공!"
+                }
+                failure {
+                    echo "❌ Build 단계 실패!"
+                }
+            }
         }
         
         stage('Test') {
@@ -29,43 +37,33 @@ pipeline {
             }
         }
         
-        stage('Deploy to Dev') {
-            when {
-                environment name: 'DEPLOY_ENV', value: 'dev'
-            }
+        stage('Deploy') {
             steps {
-                echo "🚀 개발 환경에 배포 중..."
-                echo "개발 서버 배포 완료!"
-            }
-        }
-        
-        stage('Deploy to Staging') {
-            when {
-                environment name: 'DEPLOY_ENV', value: 'staging'
-            }
-            steps {
-                echo "🚀 스테이징 환경에 배포 중..."
-                echo "스테이징 서버 배포 완료!"
-            }
-        }
-        
-        stage('Deploy to Prod') {
-            when {
-                environment name: 'DEPLOY_ENV', value: 'prod'
-            }
-            steps {
-                echo "🚀 운영 환경에 배포 중..."
-                echo "운영 서버 배포 완료!"
+                echo "🚀 배포 중..."
+                echo "배포 완료!"
             }
         }
     }
     
+    // 전체 파이프라인 post 액션
     post {
         success {
-            echo "✅ 빌드 성공! 배포 환경: ${DEPLOY_ENV}"
+            echo "========================================"
+            echo "✅ 파이프라인 전체 성공!"
+            echo "앱: ${APP_NAME}"
+            echo "버전: ${VERSION}"
+            echo "빌드 번호: ${BUILD_NUMBER}"
+            echo "========================================"
         }
         failure {
-            echo "❌ 빌드 실패!"
+            echo "========================================"
+            echo "❌ 파이프라인 실패!"
+            echo "빌드 번호: ${BUILD_NUMBER}"
+            echo "로그를 확인하세요."
+            echo "========================================"
+        }
+        always {
+            echo "📋 파이프라인 실행 완료 (성공/실패 무관)"
         }
     }
 }
