@@ -1,16 +1,16 @@
+$jenkinsfile = @'
 pipeline {
     agent any
-    
+
     environment {
-        APP_NAME = 'cicd-test'
-        VERSION = '1.0.0'
+        AWS_ACCOUNT_ID = '727477309869'  // 본인 계정 ID로 변경!
+        AWS_REGION = 'ap-northeast-2'
+        ECR_REPO_NAME = 'jenkins-cicd-demo'
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        IMAGE_NAME = "${ECR_REGISTRY}/${ECR_REPO_NAME}"
+        IMAGE_TAG = "${BUILD_NUMBER}"
     }
-    
-    options {
-        timeout(time: 30, unit: 'MINUTES')  // 전체 타임아웃
-        disableConcurrentBuilds()            // 동시 빌드 방지
-    }
-    
+
     stages {
         stage('Checkout') {
             steps {
@@ -18,45 +18,55 @@ pipeline {
                 echo "✅ 코드 체크아웃 완료"
             }
         }
-        
-        stage('Build') {
+
+        stage('Build Docker Image') {
             steps {
-                echo "🔨 ${APP_NAME} v${VERSION} 빌드 중..."
-                sh 'ls -la'
+                echo "🐳 Docker 이미지 빌드 중..."
+                echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+                sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest"
             }
         }
-        
-        stage('Test') {
+
+        stage('ECR Login') {
             steps {
-                echo "🧪 테스트 실행 중..."
-                sh 'echo "모든 테스트 통과!"'
+                echo "🔐 ECR 로그인 중..."
+                sh """
+                    aws ecr get-login-password --region ${AWS_REGION} | \
+                    docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                """
             }
         }
-        
-        stage('Deploy') {
+
+        stage('Push to ECR') {
             steps {
-                echo "🚀 배포 중..."
-                echo "배포 완료!"
+                echo "📤 ECR에 이미지 푸시 중..."
+                sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
+                sh "docker push ${IMAGE_NAME}:latest"
+            }
+        }
+
+        stage('Cleanup') {
+            steps {
+                echo "🧹 로컬 이미지 정리 중..."
+                sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
+                sh "docker rmi ${IMAGE_NAME}:latest || true"
             }
         }
     }
-    
+
     post {
         success {
             echo "========================================"
-            echo "✅ 빌드 성공!"
-            echo "앱: ${APP_NAME} v${VERSION}"
-            echo "빌드: #${BUILD_NUMBER}"
+            echo "✅ ECR 푸시 성공!"
+            echo "📦 Image: ${IMAGE_NAME}:${IMAGE_TAG}"
             echo "========================================"
         }
         failure {
-            echo "========================================"
             echo "❌ 빌드 실패!"
-            echo "로그를 확인하세요: ${BUILD_URL}console"
-            echo "========================================"
-        }
-        always {
-            echo "📋 파이프라인 완료"
         }
     }
 }
+'@
+
+[System.IO.File]::WriteAllText("$PWD\Jenkinsfile", $jenkinsfile)
