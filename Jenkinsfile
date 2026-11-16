@@ -1,9 +1,8 @@
-$jenkinsfile = @'
 pipeline {
     agent any
 
     environment {
-        AWS_ACCOUNT_ID = '727477309869'  // 본인 계정 ID로 변경!
+        AWS_ACCOUNT_ID = '727477309869'
         AWS_REGION = 'ap-northeast-2'
         ECR_REPO_NAME = 'jenkins-cicd-demo'
         ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
@@ -67,6 +66,3 @@ pipeline {
         }
     }
 }
-'@
-
-[System.IO.File]::WriteAllText("$PWD\Jenkinsfile", $jenkinsfile)
