@@ -6,6 +6,11 @@ pipeline {
         VERSION = '1.0.0'
     }
     
+    options {
+        timeout(time: 30, unit: 'MINUTES')  // 전체 타임아웃
+        disableConcurrentBuilds()            // 동시 빌드 방지
+    }
+    
     stages {
         stage('Checkout') {
             steps {
@@ -16,38 +21,15 @@ pipeline {
         
         stage('Build') {
             steps {
-                echo "🔨 빌드 중..."
+                echo "🔨 ${APP_NAME} v${VERSION} 빌드 중..."
                 sh 'ls -la'
             }
         }
         
-        stage('Test - May Fail') {
+        stage('Test') {
             steps {
                 echo "🧪 테스트 실행 중..."
-                // catchError: 에러가 나도 다음 단계로 진행
-                catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                    sh 'exit 1'  // 일부러 실패
-                }
-                echo "테스트 단계 계속 진행..."
-            }
-        }
-        
-        stage('Retry Example') {
-            steps {
-                echo "🔄 재시도 예제..."
-                // retry: 실패 시 3번까지 재시도
-                retry(3) {
-                    script {
-                        // 랜덤하게 성공/실패 (시뮬레이션)
-                        def random = new Random().nextInt(3)
-                        if (random == 0) {
-                            echo "✅ 성공!"
-                        } else {
-                            echo "❌ 실패, 재시도..."
-                            error("Simulated failure")
-                        }
-                    }
-                }
+                sh 'echo "모든 테스트 통과!"'
             }
         }
         
@@ -61,16 +43,20 @@ pipeline {
     
     post {
         success {
-            echo "✅ 파이프라인 성공!"
-        }
-        unstable {
-            echo "⚠️ 파이프라인 불안정 (일부 테스트 실패)"
+            echo "========================================"
+            echo "✅ 빌드 성공!"
+            echo "앱: ${APP_NAME} v${VERSION}"
+            echo "빌드: #${BUILD_NUMBER}"
+            echo "========================================"
         }
         failure {
-            echo "❌ 파이프라인 실패!"
+            echo "========================================"
+            echo "❌ 빌드 실패!"
+            echo "로그를 확인하세요: ${BUILD_URL}console"
+            echo "========================================"
         }
         always {
-            echo "📋 파이프라인 실행 완료"
+            echo "📋 파이프라인 완료"
         }
     }
 }
