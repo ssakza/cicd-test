@@ -9,9 +9,8 @@ pipeline {
         IMAGE_NAME = "${ECR_REGISTRY}/${ECR_REPO_NAME}"
         IMAGE_TAG = "${BUILD_NUMBER}"
         
-        ECS_CLUSTER = 'jenkins-cicd-cluster'
-        ECS_SERVICE = 'jenkins-cicd-demo-service'
-        TASK_FAMILY = 'jenkins-cicd-demo'
+        // Config Repository (본인 GitHub 사용자명으로 변경!)
+        CONFIG_REPO = 'github.com/ssakza/jenkins-cicd-config.git'
     }
 
     stages {
@@ -34,7 +33,7 @@ pipeline {
 
         stage('Push to ECR') {
             steps {
-                echo "📤 ECR로 이미지 푸시 중..."
+                echo "📤 ECR에 이미지 푸시 중..."
                 sh """
                     aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
                     docker push ${IMAGE_NAME}:${IMAGE_TAG}
@@ -43,38 +42,33 @@ pipeline {
             }
         }
 
-        stage('Deploy to ECS') {
+        stage('Update Config Repository') {
             steps {
-                echo "🚀 ECS 배포 중..."
-                sh """
-                    # 새 Task Definition 등록 (이미지 태그 업데이트)
-                    TASK_DEF=\$(aws ecs describe-task-definition --task-definition ${TASK_FAMILY} --region ${AWS_REGION})
-                    
-                    NEW_TASK_DEF=\$(echo \$TASK_DEF | jq --arg IMAGE "${IMAGE_NAME}:${IMAGE_TAG}" '.taskDefinition | .containerDefinitions[0].image = \$IMAGE | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)')
-                    
-                    aws ecs register-task-definition --cli-input-json "\$NEW_TASK_DEF" --region ${AWS_REGION}
-                    
-                    # ECS Service 업데이트
-                    aws ecs update-service \\
-                        --cluster ${ECS_CLUSTER} \\
-                        --service ${ECS_SERVICE} \\
-                        --task-definition ${TASK_FAMILY} \\
-                        --force-new-deployment \\
-                        --region ${AWS_REGION}
-                """
-            }
-        }
-
-        stage('Wait for Deployment') {
-            steps {
-                echo "⏳ 배포 완료 대기 중 (최대 5분)..."
-                sh """
-                    aws ecs wait services-stable \\
-                        --cluster ${ECS_CLUSTER} \\
-                        --services ${ECS_SERVICE} \\
-                        --region ${AWS_REGION}
-                """
-                echo "✅ 배포 완료!"
+                echo "📝 Config Repository 업데이트 중..."
+                withCredentials([usernamePassword(
+                    credentialsId: 'github-credentials',
+                    usernameVariable: 'GIT_USER',
+                    passwordVariable: 'GIT_TOKEN'
+                )]) {
+                    sh """
+                        # Config 저장소 클론
+                        rm -rf config-repo
+                        git clone https://${GIT_USER}:${GIT_TOKEN}@${CONFIG_REPO} config-repo
+                        cd config-repo
+                        
+                        # 이미지 태그 업데이트
+                        sed -i 's/newTag: .*/newTag: "${IMAGE_TAG}"/' overlays/dev/kustomization.yaml
+                        
+                        # 변경사항 커밋 및 푸시
+                        git config user.email "jenkins@example.com"
+                        git config user.name "Jenkins CI"
+                        git add .
+                        git diff --cached --quiet || git commit -m "Update image tag to ${IMAGE_TAG}"
+                        git push origin main
+                    """
+                }
+                echo "✅ Config Repository 업데이트 완료!"
+                echo "🔄 ArgoCD가 자동으로 배포를 시작합니다."
             }
         }
     }
@@ -83,20 +77,21 @@ pipeline {
         success {
             echo """
             ========================================
-            ✅ 배포 성공!
+            ✅ CI 완료!
             📦 Image: ${IMAGE_NAME}:${IMAGE_TAG}
-            🌐 Cluster: ${ECS_CLUSTER}
-            🚀 Service: ${ECS_SERVICE}
+            📝 Config Repo 업데이트됨
+            🔄 ArgoCD가 자동 배포 중...
             ========================================
             """
         }
         failure {
-            echo "❌ 배포 실패! 로그를 확인하세요."
+            echo "❌ CI 실패! 로그를 확인하세요."
         }
         always {
             sh """
                 docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true
                 docker rmi ${IMAGE_NAME}:latest || true
+                rm -rf config-repo || true
             """
         }
     }
