@@ -9,8 +9,8 @@ pipeline {
         IMAGE_NAME = "${ECR_REGISTRY}/${ECR_REPO_NAME}"
         IMAGE_TAG = "${BUILD_NUMBER}"
         
-        // Config Repository (본인 GitHub 사용자명으로 변경!)
-        CONFIG_REPO = 'github.com/ssakza/jenkins-cicd-config.git'
+        // Config Repository
+        CONFIG_REPO_URL = 'https://github.com/ssakza/jenkins-cicd-config.git'
     }
 
     stages {
@@ -45,44 +45,57 @@ pipeline {
         stage('Update Config Repository') {
             steps {
                 echo "📝 Config Repository 업데이트 중..."
+                
+                // Git Credential을 사용한 안전한 클론
+                dir('config-repo') {
+                    deleteDir()
+                }
+                
                 withCredentials([usernamePassword(
                     credentialsId: 'github-credentials',
                     usernameVariable: 'GIT_USER',
                     passwordVariable: 'GIT_TOKEN'
                 )]) {
-                    sh """
-                        # Config 저장소 클론 (credential helper 사용)
-                        rm -rf config-repo
+                    // Jenkins의 checkout step 사용 - 가장 안전한 방법
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: '*/main']],
+                        userRemoteConfigs: [[
+                            url: "${CONFIG_REPO_URL}",
+                            credentialsId: 'github-credentials'
+                        ]],
+                        extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'config-repo']]
+                    ])
+                    
+                    dir('config-repo') {
+                        sh """
+                            # 이미지 태그 업데이트
+                            sed -i 's/newTag: .*/newTag: "${IMAGE_TAG}"/' overlays/dev/kustomization.yaml
+                            
+                            # Git 설정
+                            git config user.email "jenkins@example.com"
+                            git config user.name "Jenkins CI"
+                            
+                            # 변경사항 확인 및 커밋
+                            git add .
+                            git diff --cached --quiet || git commit -m "Update image tag to ${IMAGE_TAG}"
+                        """
                         
-                        # GIT_ASKPASS를 사용하여 토큰의 특수문자 문제 회피
-                        export GIT_ASKPASS_SCRIPT=\$(mktemp)
-                        echo '#!/bin/bash' > \$GIT_ASKPASS_SCRIPT
-                        echo 'echo \$GIT_TOKEN' >> \$GIT_ASKPASS_SCRIPT
-                        chmod +x \$GIT_ASKPASS_SCRIPT
-                        
-                        GIT_ASKPASS=\$GIT_ASKPASS_SCRIPT git clone https://${GIT_USER}@github.com/ssakza/jenkins-cicd-config.git config-repo
-                        rm -f \$GIT_ASKPASS_SCRIPT
-                        
-                        cd config-repo
-                        
-                        # 이미지 태그 업데이트
-                        sed -i 's/newTag: .*/newTag: "${IMAGE_TAG}"/' overlays/dev/kustomization.yaml
-                        
-                        # 변경사항 커밋 및 푸시
-                        git config user.email "jenkins@example.com"
-                        git config user.name "Jenkins CI"
-                        git add .
-                        git diff --cached --quiet || git commit -m "Update image tag to ${IMAGE_TAG}"
-                        
-                        # Push도 GIT_ASKPASS 사용
-                        export GIT_ASKPASS_SCRIPT=\$(mktemp)
-                        echo '#!/bin/bash' > \$GIT_ASKPASS_SCRIPT
-                        echo 'echo \$GIT_TOKEN' >> \$GIT_ASKPASS_SCRIPT
-                        chmod +x \$GIT_ASKPASS_SCRIPT
-                        GIT_ASKPASS=\$GIT_ASKPASS_SCRIPT git push origin main
-                        rm -f \$GIT_ASKPASS_SCRIPT
-                    """
+                        // Push - credential helper 사용
+                        withCredentials([usernamePassword(
+                            credentialsId: 'github-credentials',
+                            usernameVariable: 'GIT_USER',
+                            passwordVariable: 'GIT_TOKEN'
+                        )]) {
+                            sh '''
+                                # Credential helper 설정 후 push
+                                git config credential.helper '!f() { echo "username=${GIT_USER}"; echo "password=${GIT_TOKEN}"; }; f'
+                                git push origin HEAD:main
+                            '''
+                        }
+                    }
                 }
+                
                 echo "✅ Config Repository 업데이트 완료!"
                 echo "🔄 ArgoCD가 자동으로 배포를 시작합니다."
             }
