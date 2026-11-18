@@ -50,22 +50,22 @@ pipeline {
                     usernameVariable: 'GIT_USER',
                     passwordVariable: 'GIT_TOKEN'
                 )]) {
-                    sh """
+                    sh '''
                         # Config 저장소 클론
                         rm -rf config-repo
-                        git clone https://${GIT_USER}:${GIT_TOKEN}@${CONFIG_REPO} config-repo
+                        git clone https://${GIT_USER}:${GIT_TOKEN}@github.com/ssakza/jenkins-cicd-config.git config-repo
                         cd config-repo
-                        
+
                         # 이미지 태그 업데이트
-                        sed -i 's/newTag: .*/newTag: "${IMAGE_TAG}"/' overlays/dev/kustomization.yaml
-                        
+                        sed -i "s/newTag: .*/newTag: \\"${IMAGE_TAG}\\"/" overlays/dev/kustomization.yaml
+
                         # 변경사항 커밋 및 푸시
                         git config user.email "jenkins@example.com"
                         git config user.name "Jenkins CI"
                         git add .
                         git diff --cached --quiet || git commit -m "Update image tag to ${IMAGE_TAG}"
                         git push origin main
-                    """
+                    '''
                 }
                 echo "✅ Config Repository 업데이트 완료!"
                 echo "🔄 ArgoCD가 자동으로 배포를 시작합니다."
